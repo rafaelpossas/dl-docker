@@ -88,10 +88,15 @@ RUN apt-get update && apt-get install -y \
 # Install pip
 RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
 	python get-pip.py && \
+	python3 get-pip.py && \
 	rm get-pip.py
 
 # Add SNI support to Python
 RUN pip --no-cache-dir install \
+		pyopenssl \
+		ndg-httpsclient \
+		pyasn1
+RUN pip3 --no-cache-dir install \
 		pyopenssl \
 		ndg-httpsclient \
 		pyasn1
@@ -129,9 +134,36 @@ RUN pip --no-cache-dir install --upgrade ipython && \
 		&& \
 	python -m ipykernel.kernelspec
 
+# Install other useful Python packages using pip
+RUN pip3 --no-cache-dir install --upgrade ipython && \
+	pip3 --no-cache-dir install \
+		Cython \
+		ipykernel \
+		jupyter \
+		path.py \
+		Pillow \
+		pygments \
+		six \
+		sphinx \
+		wheel \
+		zmq \
+		numpy \
+		scipy \
+		h5py \
+		skimage \ 
+		matplotlib \
+		pandas \
+		sklearn \
+		sympy \
+		nose \
+		&& \
+	python3 -m ipykernel.kernelspec
+
 
 # Install TensorFlow
 RUN pip --no-cache-dir install \
+	https://storage.googleapis.com/tensorflow/linux/${TENSORFLOW_ARCH}/tensorflow_${TENSORFLOW_ARCH}-${TENSORFLOW_VERSION}-cp27-none-linux_x86_64.whl
+RUN pip3 --no-cache-dir install \
 	https://storage.googleapis.com/tensorflow/linux/${TENSORFLOW_ARCH}/tensorflow_${TENSORFLOW_ARCH}-${TENSORFLOW_VERSION}-cp27-none-linux_x86_64.whl
 
 
@@ -156,7 +188,7 @@ RUN apt-get update && apt-get install -y \
 # Install Caffe
 RUN git clone -b ${CAFFE_VERSION} --depth 1 https://github.com/BVLC/caffe.git /root/caffe && \
 	cd /root/caffe && \
-	cat python/requirements.txt | xargs -n1 pip install && \
+	cat python/requirements.txt | xargs -n1 pip install && cat python/requirements.txt | xargs -n1 pip3 install \
 	git clone https://github.com/NVIDIA/nccl.git && cd nccl && make -j install && cd .. && rm -rf nccl && \
 	mkdir build && cd build && \
 	cmake -DUSE_CUDNN=1 -DUSE_NCCL=1 .. && \
@@ -181,9 +213,18 @@ RUN pip --no-cache-dir install git+git://github.com/Theano/Theano.git@${THEANO_V
 		\n[DebugMode]\ncheck_finite=1" \
 	> /root/.theanorc
 
+RUN pip3 --no-cache-dir install git+git://github.com/Theano/Theano.git@${THEANO_VERSION} && \
+	\
+	echo "[global]\ndevice=gpu\nfloatX=float32\noptimizer_including=cudnn\nmode=FAST_RUN \
+		\n[lib]\ncnmem=0.95 \
+		\n[nvcc]\nfastmath=True \
+		\n[blas]\nldflag = -L/usr/lib/openblas-base -lopenblas \
+		\n[DebugMode]\ncheck_finite=1" \
+	> /root/.theanorc
 
 # Install Keras
 RUN pip --no-cache-dir install git+git://github.com/fchollet/keras.git@${KERAS_VERSION}
+RUN pip3 --no-cache-dir install git+git://github.com/fchollet/keras.git@${KERAS_VERSION}
 
 
 # Install OpenCV
@@ -203,8 +244,21 @@ COPY jupyter_notebook_config.py /root/.jupyter/
 # Jupyter has issues with being run directly: https://github.com/ipython/ipython/issues/7062
 COPY run_jupyter.sh /root/
 
+# SSH
+RUN apt-get update && apt-get install -y openssh-server
+RUN mkdir /var/run/sshd
+RUN echo 'root:gpu' | chpasswd
+RUN sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+
+# SSH login fix. Otherwise user is kicked off after login
+RUN sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
+
+ENV NOTVISIBLE "in users profile"
+RUN echo "export VISIBLE=now" >> /etc/profile
+
 # Expose Ports for TensorBoard (6006), Ipython (8888)
-EXPOSE 6006 8888
+EXPOSE 6006 8888 22
 
 WORKDIR "/root"
+CMD ["/usr/sbin/sshd", "-D"]
 CMD ["/bin/bash"]
